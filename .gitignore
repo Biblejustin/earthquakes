@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# Local data (regenerate via `python fetch_quakes.py`)
+quakes.sqlite
+quakes.sqlite-journal
+
+# Backups
+*.bak
+
+# macOS
+.DS_Store
