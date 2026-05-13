@@ -6,7 +6,7 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 `fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher is idempotent on event id and resumable: re-running only processes missing chunks, and the current year is always re-fetched.
 
-`earthquakes.ipynb` reads the database and produces the four plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
+`earthquakes.ipynb` reads the database and produces the five plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
 
 ## Sample output
 
@@ -22,13 +22,19 @@ The trend line is fit on the post-2000 era only — once digital regional networ
 
 ### M≥7.0 yearly counts (the detection-bias control)
 
-Global instrumentation has been complete for M7+ for ~100 years, so this band isn't affected by the same detection-improvement bias. If the apparent trend at M4 were real seismicity, this line would rise too. It's essentially flat — the M4 trend is detection, not actual quakes.
+Global instrumentation has been complete for M7+ for ~125 years, so this band isn't affected by the same detection-improvement bias. If the apparent trend at M4 were real seismicity, this line would rise too. Both fits — long span (1900–today) and WWSSN era (1965–today) — come out essentially flat. The M4 trend is detection, not actual quakes.
 
 ![M7+ yearly counts](figures/03_m7_yearly.png)
 
+### M≥7.0 trailing 12-month count
+
+The calendar-year view above mixes a "what changed?" question with calendar-bin noise and a partial-year problem. The trailing 12-month count is a continuous sliding window: for every day in the catalog, how many M≥7 events occurred in the prior 365 days. Every plotted point represents a full year's observations, the series runs all the way to today, and you can read clustering events (1939, 2004–2011) and quiet stretches (mid-1950s) at a glance. The shaded band is ±1σ of the yearly counts — values inside are unremarkable, outside are notable.
+
+![M7+ trailing 12-month count](figures/04_m7_trailing_12mo.png)
+
 ### Magnitude distribution
 
-![Magnitude distribution](figures/04_magnitude_distribution.png)
+![Magnitude distribution](figures/05_magnitude_distribution.png)
 
 ## Why these specific cutoffs
 
