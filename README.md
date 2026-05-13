@@ -6,7 +6,7 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 `fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher is idempotent on event id and resumable: re-running only processes missing chunks, and the current year is always re-fetched.
 
-`earthquakes.ipynb` reads the database and produces the five plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
+`earthquakes.ipynb` reads the database and produces the six plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
 
 ## Sample output
 
@@ -32,9 +32,18 @@ The calendar-year view above mixes a "what changed?" question with calendar-bin 
 
 ![M7+ trailing 12-month count](figures/04_m7_trailing_12mo.png)
 
+### Decadal intensity
+
+A linear-trend fit answers "is the average rate ticking up?" — but if the pattern of interest is episodic rather than steady (clusters intensifying, peaks rising), the more relevant question is "are the peaks and totals per decade rising?" Two views:
+
+- **Peak trailing-12-month count per decade** (left): how big was the worst cluster of each decade?
+- **Cumulative seismic energy per decade** (right): expressed as the equivalent magnitude of one quake releasing the decade's total seismic moment. Because magnitude is logarithmic, this is dominated by the largest events of each decade and is a more honest "intensity" reading than count alone.
+
+![Decadal intensity — peak trailing-12mo and cumulative energy](figures/05_decadal_intensity.png)
+
 ### Magnitude distribution
 
-![Magnitude distribution](figures/05_magnitude_distribution.png)
+![Magnitude distribution](figures/06_magnitude_distribution.png)
 
 ## Why these specific cutoffs
 
