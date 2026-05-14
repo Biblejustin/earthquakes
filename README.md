@@ -6,7 +6,7 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 `fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher is idempotent on event id and resumable: re-running only processes missing chunks, and the current year is always re-fetched.
 
-`earthquakes.ipynb` reads the database and produces the six plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
+`earthquakes.ipynb` reads the database and produces the seven plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
 
 ## Sample output
 
@@ -41,9 +41,18 @@ A linear-trend fit answers "is the average rate ticking up?" — but if the patt
 
 ![Decadal intensity — peak trailing-12mo and cumulative energy](figures/05_decadal_intensity.png)
 
+### Great-quake timing (M≥8.5)
+
+Restricting to the truly great earthquakes — M≥8.5 — is the cleanest test for whether large quakes are arriving more frequently. The catalog has 17 such events since 1900.
+
+- **Left**: cumulative count over time. A steepening curve means events are arriving faster; a straight line means a constant rate.
+- **Right**: time gap between consecutive great quakes, with a 5-event rolling mean.
+
+![Great quake timing — cumulative count and inter-event intervals](figures/06_great_quake_timing.png)
+
 ### Magnitude distribution
 
-![Magnitude distribution](figures/06_magnitude_distribution.png)
+![Magnitude distribution](figures/07_magnitude_distribution.png)
 
 ## Why these specific cutoffs
 
