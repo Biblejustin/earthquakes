@@ -1,0 +1,20 @@
+year	month	day	magnitude	lat	lon	location	deaths	damage_musd	notes
+2018	2	25	7.5	-6.07	142.75	Papua New Guinea (Hela Province)	145		Highland landslides
+2018	8	5	6.9	-8.26	116.43	Indonesia (Lombok)	563		Sequence; combined with Aug 19 aftershocks
+2018	9	28	7.5	-0.18	119.84	Indonesia (Sulawesi, Palu)	4340		Includes Palu tsunami and liquefaction
+2019	5	26	8.0	-5.81	-75.27	Peru (Loreto)	2
+2019	7	14	7.2	0.59	128.04	Indonesia (Halmahera)	14
+2019	11	26	6.4	41.51	19.53	Albania (Durres)	51
+2020	1	24	6.7	38.39	39.06	Turkey (Elazig)	41
+2020	10	30	7.0	37.92	26.79	Aegean Sea (Samos/Izmir)	119		Local tsunami
+2021	8	14	7.2	18.42	-73.48	Haiti (Tiburon Peninsula)	2248	1600
+2021	9	7	7.0	16.93	-99.93	Mexico (Acapulco/Guerrero)	1
+2022	6	22	6.2	33.09	69.51	Afghanistan (Khost/Paktika)	1163		Mostly mud-brick collapse
+2022	11	21	5.6	-6.84	107.06	Indonesia (Cianjur, West Java)	335		Shallow, dense population
+2023	2	6	7.8	37.17	37.03	Turkey/Syria (Kahramanmaras)	59259	118800	Combined with M7.5 aftershock same day
+2023	9	8	6.8	31.06	-8.39	Morocco (Marrakesh-Safi, Al Haouz)	2960	7000	Atlas Mountains
+2023	10	7	6.3	34.61	61.93	Afghanistan (Herat sequence)	1480		4 events Oct 7-15
+2023	12	18	6.2	35.74	102.79	China (Gansu/Qinghai)	151
+2024	1	1	7.6	37.49	137.24	Japan (Noto Peninsula)	545	17600
+2024	4	3	7.4	23.81	121.56	Taiwan (Hualien)	19
+2025	3	28	7.7	21.99	95.93	Myanmar (Sagaing)	5456		Severe damage Mandalay/Sagaing

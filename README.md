@@ -6,7 +6,9 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 `fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher is idempotent on event id and resumable: re-running only processes missing chunks, and the current year is always re-fetched.
 
-`earthquakes.ipynb` reads the database and produces the seven plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
+`fetch_significant.py` adds fatality and damage data for significant earthquakes since 1900 from the NOAA NCEI Significant Earthquake Database, pulled via a [GitHub mirror](https://github.com/benjiao/significant-earthquakes) (through 2017) plus a local `recent_significant.tsv` for post-2017 events. Replace the latter with a fresh NOAA NCEI download when their API is reachable. Data lands in a `significant_quakes` table alongside the USGS catalog.
+
+`earthquakes.ipynb` reads both tables and produces the nine plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
 
 ## Sample output
 
@@ -50,9 +52,23 @@ Restricting to the truly great earthquakes — M≥8.5 — is the cleanest test 
 
 ![Great quake timing — cumulative count and inter-event intervals](figures/06_great_quake_timing.png)
 
+### Human cost — earthquake fatalities
+
+**Important: fatalities are not a measure of seismicity.** They measure where people happened to be living when the ground shook. A M6.0 under a megacity kills thousands; a M8.5 in the open ocean kills nobody. Trends in earthquake deaths over the 20th century are dominated by population growth, urbanization (~4× since 1900), building codes (or their absence) in seismically active regions, and warning systems — not by Earth's behavior. Read these plots as a *human-exposure* story.
+
+About 2.28 million people have died in earthquakes since 1900 by recorded counts. The single deadliest years are dominated by individual catastrophic events — Haiti 2010 (~316k), Tangshan 1976 (~243k), Gansu 1920 (~200k), Tokyo/Yokohama 1923 (~143k).
+
+![Annual and cumulative earthquake deaths since 1900](figures/07_earthquake_deaths.png)
+
+### Deaths vs. magnitude
+
+If lethality were just about seismic energy, this scatter would be a clean upward trend. It isn't — the vertical spread at any given magnitude is enormous. M7.0 events range from zero deaths (open ocean) to 316,000 (Haiti 2010, a city of 3M with poor building stock directly above a M7.0). The cleanest evidence that fatalities are about *where* and *what's built there*, not the seismic event itself.
+
+![Deaths vs magnitude scatter](figures/08_deaths_vs_magnitude.png)
+
 ### Magnitude distribution
 
-![Magnitude distribution](figures/07_magnitude_distribution.png)
+![Magnitude distribution](figures/09_magnitude_distribution.png)
 
 ## Why these specific cutoffs
 
@@ -75,10 +91,13 @@ pip install -r requirements.txt
 ## Fetch the data
 
 ```bash
-python fetch_quakes.py
+python fetch_quakes.py        # USGS catalog: M≥4 from 1965 to today
+python fetch_significant.py   # NOAA NCEI fatality data: 1900 to today
 ```
 
-Defaults to M≥4.0, 1965 → today. Override with `--start-year`, `--end-year`, `--min-mag`, `--db`. Pre-1965 data is sparse globally; treat earlier years as undercounting reality.
+`fetch_quakes.py` defaults to M≥4.0, 1965 → today. Override with `--start-year`, `--end-year`, `--min-mag`, `--db`. Pre-1965 data is sparse globally; treat earlier years as undercounting reality.
+
+`fetch_significant.py` pulls from the GitHub mirror (1900–2017) and reads `recent_significant.tsv` for post-2017 events. Use `--mirror-only` or `--local-only` to control sources. When NOAA NCEI's API is reachable, regenerate `recent_significant.tsv` from a fresh search export at https://www.ngdc.noaa.gov/hazel/view/Hazards/Earthquake/Search.
 
 ## Open the notebook
 
