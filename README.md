@@ -20,17 +20,23 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 The trend line is fit on the post-2000 era only — once digital regional networks were fully online and M4 detection had largely stabilized. A full-span fit would mostly track network-coverage gains rather than seismicity, so it's omitted.
 
+**Above vs. below the line:** A year whose bar sits *above* the dashed trend line had more catalogued quakes than the post-2000 average predicts; *below* means fewer. Most pre-2000 bars are far below the trend line because the catalog wasn't yet detecting M4 events globally. Post-2000 bars hug the line because that's the era the line is fit to.
+
 ![Yearly counts by magnitude band](figures/02_yearly_by_band.png)
 
 ### M≥7.0 yearly counts (the detection-bias control)
 
 Global instrumentation has been complete for M7+ for ~125 years, so this band isn't affected by the same detection-improvement bias. If the apparent trend at M4 were real seismicity, this line would rise too. Both fits — long span (1900–today) and WWSSN era (1965–today) — come out essentially flat. The M4 trend is detection, not actual quakes.
 
+**Above vs. below the line:** A year *above* the dashed trend had more M≥7 quakes than the long-run average; *below* had fewer. Standout above-trend years include 2010 (Chile + Haiti), 2011 (Tōhoku + multiple aftershocks), 1939, and 2004 (Sumatra). Sustained below-trend stretches like the mid-1980s are real quiet periods, not detection artifacts (the M7 catalog has been complete throughout).
+
 ![M7+ yearly counts](figures/03_m7_yearly.png)
 
 ### M≥7.0 trailing 12-month count
 
-The calendar-year view above mixes a "what changed?" question with calendar-bin noise and a partial-year problem. The trailing 12-month count is a continuous sliding window: for every day in the catalog, how many M≥7 events occurred in the prior 365 days. Every plotted point represents a full year's observations, the series runs all the way to today, and you can read clustering events (1939, 2004–2011) and quiet stretches (mid-1950s) at a glance. The shaded band is ±1σ of the yearly counts — values inside are unremarkable, outside are notable.
+The calendar-year view above mixes a "what changed?" question with calendar-bin noise and a partial-year problem. The trailing 12-month count is a continuous sliding window: for every day in the catalog, how many M≥7 events occurred in the prior 365 days. Every plotted point represents a full year's observations, the series runs all the way to today, and you can read clustering events (1939, 2004–2011) and quiet stretches (mid-1950s) at a glance.
+
+**Above vs. below the band:** The shaded ±1σ band shows the "normal" range of yearly counts. The line *inside* the band is at unremarkable levels (what you'd expect from year-to-year variation). The line *above* the band is a notable clustering period — significantly more M≥7 quakes than usual rolling through the catalog. The line *below* the band is a quiet stretch. The 1939 spike and 2004–2011 plateau punch above; the mid-1950s and the early 2020s sag below.
 
 ![M7+ trailing 12-month count](figures/04_m7_trailing_12mo.png)
 
@@ -50,6 +56,8 @@ Restricting to the truly great earthquakes — M≥8.5 — is the cleanest test 
 - **Left**: cumulative count over time. A steepening curve means events are arriving faster; a straight line means a constant rate.
 - **Right**: time gap between consecutive great quakes, with a 5-event rolling mean.
 
+**Above vs. below the line:** If the left-panel cumulative staircase is *above* the constant-rate reference, great quakes have been arriving *faster* than the long-run average (busy stretch). *Below* the reference means they've been arriving *slower* (quiet stretch). The catalog shows two busy stretches above the line: the early-20th-C run (Andes/Aleutians cluster) and the 2004–2014 cluster (Sumatra, Chile, Tōhoku) — separated by a 50-year quiet stretch where the staircase falls well below the line.
+
 ![Great quake timing — cumulative count and inter-event intervals](figures/06_great_quake_timing.png)
 
 ### Human cost — earthquake fatalities
@@ -64,9 +72,15 @@ About 2.28 million people have died in earthquakes since 1900 by recorded counts
 
 If lethality were just about seismic energy, this scatter would be a clean upward trend. It isn't — the vertical spread at any given magnitude is enormous. M7.0 events range from zero deaths (open ocean) to 316,000 (Haiti 2010, a city of 3M with poor building stock directly above a M7.0). The cleanest evidence that fatalities are about *where* and *what's built there*, not the seismic event itself.
 
+**Above vs. below any imagined trend line:** Dots *above* the cloud of points at a given magnitude are events that killed *more* people than typical for that magnitude — usually because they struck a populated, poorly-built region (Haiti 2010 at M7.0 → 316k; Tangshan 1976 at M7.6 → 243k). Dots *below* are events that killed *fewer* than typical for that magnitude — usually offshore or remote (most M8+ Aleutians/South Sandwich events).
+
 ![Deaths vs magnitude scatter](figures/08_deaths_vs_magnitude.png)
 
 ### Magnitude distribution
+
+This is the classic Gutenberg-Richter plot: log-log survival function of magnitudes. The dashed line is the power-law fit on the tail (M≥6.5, where global detection is complete throughout the catalog).
+
+**Above vs. below the line:** Dots *above* the dashed line at a given magnitude mean "more quakes at this magnitude than the Gutenberg-Richter scaling rule predicts" — an excess at that size. Dots *below* mean "fewer than predicted." The very-large tail (M8.5+) typically falls slightly below the line, reflecting the fact that the largest events are *even rarer* than the scaling rule expects — a finite-size upper cutoff in the physics. The small-end deviation below the line at M<4 is just the catalog completeness floor (we don't catch every M3).
 
 ![Magnitude distribution](figures/09_magnitude_distribution.png)
 
