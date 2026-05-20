@@ -1,6 +1,6 @@
 # Earthquakes
 
-Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then explore it in a Jupyter notebook.
+Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then explore it in a Jupyter notebook. One of 10 sibling repos analyzed together — see the [`correlations`](https://github.com/Biblejustin/correlations) hub for the cross-repo analysis.
 
 ## What it does
 
