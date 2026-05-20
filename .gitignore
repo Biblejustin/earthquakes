@@ -12,6 +12,8 @@ Untitled*.ipynb
 # Local data (regenerate via `python fetch_quakes.py`)
 quakes.sqlite
 quakes.sqlite-journal
+quakes_1900.sqlite
+quakes_1900.sqlite-journal
 
 # Backups
 *.bak
