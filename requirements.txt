@@ -1,6 +1,7 @@
-requests>=2.31
-pandas>=2.0
-numpy>=1.24
-matplotlib>=3.7
+# Pinned 2026-07-02 so figure bytes are comparable across machines and runs.
+pandas==3.0.3
+numpy==2.5.0
+matplotlib==3.11.0
+requests==2.34.2
 jupyter>=1.0
 notebook>=7.0

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Fetch significant earthquake fatality data into quakes.sqlite.
 
-Combines two sources because NOAA NCEI's direct API isn't always reachable:
+Primary source (since 2026-07): NOAA NCEI/NGDC Significant Earthquake
+Database, pulled directly from the hazel hazard-service API (paginated).
+This is the same upstream the old GitHub mirror snapshotted in 2017, but
+live — it currently runs through the present.
 
-1. Historical (1900–2017): GitHub mirror of NOAA NCEI Significant Earthquake
-   Database (benjiao/significant-earthquakes). Well-curated, but stops in 2017.
-
-2. Recent (2018–today): A local hand-curated TSV at recent_significant.tsv,
-   sourced from Wikipedia and USGS. Should be replaced with a fresh NOAA pull
-   when their API is reachable.
+Fallbacks (used only if the NGDC API is unreachable):
+1. GitHub mirror of the 2017 NGDC snapshot (benjiao/significant-earthquakes)
+2. Local hand-curated recent_significant.tsv (Wikipedia/USGS sourced)
 
 Writes into a `significant_quakes` table in quakes.sqlite alongside the
-existing M≥4 catalog.
+existing M≥4 catalog. When the NGDC pull succeeds, the table is rebuilt
+from NGDC alone (single source of truth); a guard refuses the rebuild if
+the fresh pull is >5% smaller than what the table already holds.
 
 IMPORTANT: earthquake fatalities are not a measure of seismicity. They're
 a measure of where people happened to be living. A M6.0 under a megacity
@@ -24,13 +26,16 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import re
 import sqlite3
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+NGDC_URL = 'https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/earthquakes'
 MIRROR_CSV_URL = (
     'https://raw.githubusercontent.com/benjiao/significant-earthquakes/'
     'master/earthquakes.csv'
@@ -119,9 +124,51 @@ def _row_id(year, month, day, lat, lon, mag, src):
     return '_'.join(parts)
 
 
+def fetch_ngdc_rows(start_year, end_year, page_size=200, sleep=0.4):
+    """Pull the live NGDC significant-earthquake catalog, yield insert tuples."""
+    print(f'Fetching NGDC live: {NGDC_URL}')
+    page = 1
+    count = 0
+    total = None
+    while True:
+        url = (f'{NGDC_URL}?minYear={start_year}&maxYear={end_year}'
+               f'&page={page}&itemsPerPage={page_size}')
+        req = urllib.request.Request(
+            url, headers={'User-Agent': 'earthquakes-repo-fetch/2.0'})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        items = data.get('items') or []
+        total = data.get('totalItems', total)
+        for row in items:
+            year = _try_int(row.get('year'))
+            if year is None:
+                continue
+            month = _try_int(row.get('month'))
+            day = _try_int(row.get('day'))
+            hour = _try_int(row.get('hour'))
+            minute = _try_int(row.get('minute'))
+            second = _try_int(row.get('second'))
+            mag = _try_float(row.get('eqMagnitude'))
+            deaths = _try_int(row.get('deathsTotal'))
+            damage = _try_float(row.get('damageMillionsDollarsTotal'))
+            lat = _try_float(row.get('latitude'))
+            lon = _try_float(row.get('longitude'))
+            loc_name = (row.get('locationName') or '').strip()
+            tm = _to_time_ms(year, month, day, hour, minute, second)
+            rid = _row_id(year, month, day, lat, lon, mag, 'ngdc')
+            yield (rid, tm, year, month, day, mag, lat, lon, loc_name,
+                   deaths, damage, 'ngdc')
+            count += 1
+        if not items or (total is not None and count >= total):
+            break
+        page += 1
+        time.sleep(sleep)
+    print(f'  → {count} NGDC rows in {start_year}–{end_year}')
+
+
 def fetch_mirror_rows(start_year, end_year):
-    """Pull NOAA mirror CSV, yield dicts ready for insertion."""
-    print(f'Fetching mirror: {MIRROR_CSV_URL}')
+    """FALLBACK: 2017 GitHub snapshot of the NGDC catalog."""
+    print(f'Fetching mirror (2017 snapshot): {MIRROR_CSV_URL}')
     with urllib.request.urlopen(MIRROR_CSV_URL, timeout=30) as resp:
         text = resp.read().decode('utf-8')
     reader = csv.DictReader(io.StringIO(text))
@@ -149,7 +196,7 @@ def fetch_mirror_rows(start_year, end_year):
 
 
 def fetch_local_recent():
-    """Read hand-curated recent significant events from local TSV."""
+    """FALLBACK: hand-curated recent significant events from local TSV."""
     if not LOCAL_RECENT_TSV.exists():
         print(f'No local recent file at {LOCAL_RECENT_TSV} — skipping')
         return
@@ -182,9 +229,9 @@ def main():
     parser.add_argument('--start-year', type=int, default=1900)
     parser.add_argument('--end-year', type=int, default=2099)
     parser.add_argument('--mirror-only', action='store_true',
-                        help='Skip local recent TSV')
+                        help='Skip NGDC live pull; use 2017 mirror + local TSV')
     parser.add_argument('--local-only', action='store_true',
-                        help='Skip mirror fetch')
+                        help='Skip all network fetches; use local TSV only')
     args = parser.parse_args()
 
     conn = sqlite3.connect(args.db)
@@ -193,18 +240,33 @@ def main():
     n_before = conn.execute('SELECT COUNT(*) FROM significant_quakes').fetchone()[0]
 
     rows = []
-    if not args.local_only:
+    rebuilt_from_ngdc = False
+    if not (args.mirror_only or args.local_only):
+        try:
+            rows = list(fetch_ngdc_rows(args.start_year, args.end_year))
+            # Guard: refuse a rebuild that shrinks the table by more than 5%
+            if n_before and len(rows) < 0.95 * n_before:
+                print(f'  ! NGDC returned only {len(rows)} rows vs {n_before} '
+                      f'existing — keeping existing table, treating as failure',
+                      file=sys.stderr)
+                rows = []
+            if rows:
+                rebuilt_from_ngdc = True
+        except Exception as e:
+            print(f'  ! NGDC live fetch failed: {e}', file=sys.stderr)
+            print('  → falling back to 2017 mirror + local recent TSV')
+
+    if not rows and not args.local_only:
         try:
             rows.extend(fetch_mirror_rows(args.start_year, args.end_year))
         except Exception as e:
             print(f'  ! mirror fetch failed: {e}', file=sys.stderr)
-            if not args.mirror_only:
-                print('  → continuing with local recent only')
-            else:
-                raise
+    if not rebuilt_from_ngdc:
+        rows.extend(fetch_local_recent() or [])
 
-    if not args.mirror_only:
-        rows.extend(fetch_local_recent())
+    if rebuilt_from_ngdc:
+        # Single source of truth: drop any old mirror/local rows
+        conn.execute('DELETE FROM significant_quakes')
 
     conn.executemany(
         'INSERT OR REPLACE INTO significant_quakes '
@@ -227,8 +289,9 @@ def main():
     ).fetchone()
     conn.close()
 
+    src = 'NGDC live' if rebuilt_from_ngdc else 'mirror+local fallback'
     print()
-    print(f'significant_quakes table: {n_before:,} → {n_after:,} '
+    print(f'significant_quakes table ({src}): {n_before:,} → {n_after:,} '
           f'rows ({n_after - n_before:+,})')
     print(f'  Events with recorded deaths: {n_with_deaths:,}')
     print(f'  Total deaths (sum of recorded): {total_deaths:,}')
