@@ -21,13 +21,13 @@ class QueryCacheTests(unittest.TestCase):
 
     def test_legacy_date_only_cache_does_not_skip_different_query(self):
         q.record_chunk(self.con,'2000-01-01T00:00:00','2001-01-01T00:00:00','year',2)
-        with patch.object(q,'fetch_chunk',return_value={'features':[]}) as fetch:
+        with patch.object(q,'fetch_chunk',return_value={'type':'FeatureCollection','metadata':{'count':0},'features':[]}) as fetch:
             q.fetch_year(self.con,2000,4.,0,False)
         fetch.assert_called_once()
         self.assertEqual(q.chunk_done(self.con,'2000-01-01T00:00:00','2001-01-01T00:00:00',4.),0)
 
     def test_cache_isolated_by_magnitude_and_exact_repeats_reused(self):
-        with patch.object(q,'fetch_chunk',return_value={'features':[]}) as fetch:
+        with patch.object(q,'fetch_chunk',return_value={'type':'FeatureCollection','metadata':{'count':0},'features':[]}) as fetch:
             q.fetch_year(self.con,2000,6.5,0,False)
             q.fetch_year(self.con,2000,6.5,0,False)
             self.assertEqual(fetch.call_count,1)
@@ -38,7 +38,7 @@ class QueryCacheTests(unittest.TestCase):
         self.assertEqual(self.con.execute('SELECT COUNT(*) FROM chunks_v2').fetchone()[0],2)
 
     def test_split_month_cache_keeps_query_identity(self):
-        with patch.object(q,'fetch_chunk',side_effect=[None]+[{'features':[]}]*12):
+        with patch.object(q,'fetch_chunk',side_effect=[None]+[{'type':'FeatureCollection','metadata':{'count':0},'features':[]}]*12):
             q.fetch_year(self.con,2000,4.,0,False)
         self.assertEqual(self.con.execute('SELECT COUNT(*) FROM chunks_v2').fetchone()[0],13)
         self.assertIsNone(q.chunk_done(self.con,'2000-01-01T00:00:00','2001-01-01T00:00:00',6.5))
