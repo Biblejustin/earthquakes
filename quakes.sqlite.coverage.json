@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "start_year": 1965,
+  "end_year": 2026,
+  "complete_through_year": 2025,
+  "gap_years": [],
+  "completeness": "source_defined_catalog",
+  "source_url": "https://earthquake.usgs.gov/fdsnws/event/1/query",
+  "source_version": "46d62710333174da67a259215ef784bfcc1d535d8b5f361f43a5fa78c8336e63",
+  "min_magnitude": 4.0,
+  "as_of": "2026-09-05T21:29:32.318039+00:00",
+  "notes": "Successful full-year queries at recorded magnitude floor; current year provisional. Historical cache does not imply every historical event is detected."
+}

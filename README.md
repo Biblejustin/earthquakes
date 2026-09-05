@@ -4,7 +4,11 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 ## What it does
 
-`fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher resumes from date-and-query cache records: a different magnitude floor triggers a new fetch, and the current year is always fetched again. Legacy date-only cache entries remain for audit but must be fetched once under the new schema because their selection criteria are unknown. A `.coverage.json` sidecar records successful query bounds and gaps independently of the last earthquake date. Upserts refresh known events; withdrawn historical events still require explicit catalogue reconciliation.
+`fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite`. The fetcher resumes from date-and-query cache records: a different magnitude floor triggers a new fetch, the current year is always fetched again, and historical caches expire after 30 days. Legacy date-only cache entries remain for audit but must be fetched once under the new schema because their selection criteria are unknown. A `.coverage.json` sidecar records successful query bounds and gaps independently of the last earthquake date.
+
+Each successful refresh checks GeoJSON metadata, unique event IDs, event times/magnitudes, and the service's independent count endpoint before changing the database. The exact interval includes its start and excludes its end. Missing IDs are removed only when their stored time and magnitude fall inside that query. This handles withdrawals and revisions below the requested magnitude floor; absence cannot distinguish these causes. Old rows survive in `removed_quake_records`, linked to query bounds and response hashes in `quake_reconciliations`. Upserts, scoped removals, and cache updates commit together. A year split into months is staged in full before any mutation; failed, malformed, or truncated responses preserve its existing records. Events outside the requested scope are retained, and remain unverified until their own scope is refreshed.
+
+The source can return events whose preferred magnitude is below the requested floor. After validating the complete source response against its independent count, the fetcher applies the magnitude floor to preferred values and retains these excluded source records in `excluded_usgs_response_records`. This keeps the analysis definition explicit and makes source/query discrepancies inspectable.
 
 `fetch_significant.py` fetches fatality and damage data from the [NOAA NCEI significant-earthquake API](https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/earthquakes). It stages a single-source snapshot and replaces the `significant_quakes` table atomically after validation. A failed or unexpectedly small refresh preserves existing rows unchanged. Fallback copies are never appended to an existing snapshot.
 
@@ -110,6 +114,12 @@ python fetch_significant.py   # NOAA NCEI fatality data: 1900 to today
 ```
 
 `fetch_quakes.py` defaults to M≥4.0, 1965 → today. Override with `--start-year`, `--end-year`, `--min-mag`, `--db`. Pre-1965 data is sparse globally; treat earlier years as undercounting reality.
+
+Use `--force` to reconcile every requested year now, or `--max-cache-age-days` to change historical refresh cadence. For a bounded check, supply both `--start-time` and `--end-time`; timestamps use UTC unless an explicit offset is supplied. This interval mode records its query but makes no full-year coverage claim. Example:
+
+```bash
+python fetch_quakes.py --start-time 2026-09-03T00:00:00Z --end-time 2026-09-04T00:00:00Z --min-mag 4 --db bounded-check.sqlite
+```
 
 `fetch_significant.py` uses the live NGDC source by default. Only an empty database can bootstrap from the 2017 mirror, or from the local TSV if the mirror fails; those sources are kept separate. `--mirror-only` and `--local-only` select an empty-database bootstrap source and preserve any existing snapshot. The fetcher writes `.significant.status.json` and a status row inside SQLite. Fresh live refreshes exit 0; stale, unavailable, or fallback-only runs exit 2 so monitoring can flag degraded data. Partial-date significant events retain their annual fields but do not receive an invented exact-day timestamp.
 
