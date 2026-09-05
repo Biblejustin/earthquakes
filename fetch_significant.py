@@ -6,9 +6,10 @@ Database, pulled directly from the hazel hazard-service API (paginated).
 This is the same upstream the old GitHub mirror snapshotted in 2017, but
 live — it currently runs through the present.
 
-Fallbacks (used only if the NGDC API is unreachable):
-1. GitHub mirror of the 2017 NGDC snapshot (benjiao/significant-earthquakes)
-2. Local hand-curated recent_significant.tsv (Wikipedia/USGS sourced)
+On a failed NGDC refresh, retain any existing snapshot unchanged. Fallbacks are
+only used to bootstrap an empty database: first the 2017 mirror, or local TSV
+if the mirror is unavailable. These sources are never appended to an existing
+NGDC table or mixed with one another. Degraded/stale runs return nonzero status.
 
 Writes into a `significant_quakes` table in quakes.sqlite alongside the
 existing M≥4 catalog. When the NGDC pull succeeds, the table is rebuilt
@@ -61,6 +62,16 @@ CREATE TABLE IF NOT EXISTS significant_quakes (
 
 CREATE INDEX IF NOT EXISTS sig_year ON significant_quakes(year);
 CREATE INDEX IF NOT EXISTS sig_deaths ON significant_quakes(deaths);
+CREATE TABLE IF NOT EXISTS significant_refresh_status (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    checked_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    start_year INTEGER NOT NULL,
+    end_year INTEGER NOT NULL,
+    row_count INTEGER NOT NULL
+);
 """
 
 POINT_RE = re.compile(r'POINT\s*\(\s*(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s*\)')
@@ -92,7 +103,7 @@ def _parse_point(s):
 
 def _to_time_ms(year, month, day, hour, minute, second):
     """Compose a UTC timestamp in milliseconds. Tolerate missing sub-day fields."""
-    if year is None or year < 1 or year > 9999:
+    if year is None or year < 1 or year > 9999 or month is None or day is None:
         # Negative or huge years (BC, fragmentary) — skip for our 1900+ scope
         return None
     try:
@@ -155,7 +166,7 @@ def fetch_ngdc_rows(start_year, end_year, page_size=200, sleep=0.4):
             lon = _try_float(row.get('longitude'))
             loc_name = (row.get('locationName') or '').strip()
             tm = _to_time_ms(year, month, day, hour, minute, second)
-            rid = _row_id(year, month, day, lat, lon, mag, 'ngdc')
+            rid = ('ngdc_' + str(row['id'])) if row.get('id') is not None else _row_id(year, month, day, lat, lon, mag, 'ngdc')
             yield (rid, tm, year, month, day, mag, lat, lon, loc_name,
                    deaths, damage, 'ngdc')
             count += 1
@@ -222,81 +233,114 @@ def fetch_local_recent():
     print(f'  → {count} local recent rows')
 
 
+def _save_refresh_status(conn, status, source, detail, start_year, end_year):
+    count = conn.execute('SELECT COUNT(*) FROM significant_quakes').fetchone()[0]
+    result = dict(checked_at=datetime.now(timezone.utc).isoformat(), status=status,
+                  source=source, detail=detail, start_year=start_year,
+                  end_year=end_year, row_count=count)
+    conn.execute(
+        'INSERT OR REPLACE INTO significant_refresh_status '
+        '(singleton,checked_at,status,source,detail,start_year,end_year,row_count) '
+        'VALUES (1,?,?,?,?,?,?,?)', tuple(result.values()))
+    conn.commit()
+    return result
+
+
+def refresh_significant(conn, start_year=1900, end_year=2099, *,
+                        mirror_only=False, local_only=False):
+    """Stage a complete single-source replacement or retain the old snapshot.
+
+    A network failure or shrink rejection never appends fallback copies to
+    existing events. Initial fallback bootstrap chooses one source only.
+    Narrower ranges cannot erase an existing broader catalogue.
+    """
+    n_before = conn.execute('SELECT COUNT(*) FROM significant_quakes').fetchone()[0]
+    existing_source = ','.join(row[0] for row in conn.execute(
+        'SELECT DISTINCT source FROM significant_quakes ORDER BY source'))
+    rows, source, error = [], '', ''
+    if not (mirror_only or local_only):
+        try:
+            rows = list(fetch_ngdc_rows(start_year, end_year))
+            # Count unique source identities, not accidental repeated pages.
+            rows = list({row[0]: row for row in rows}.values())
+            if not rows:
+                raise ValueError('NGDC returned no events')
+            if n_before and len(rows) < 0.95 * n_before:
+                raise ValueError(f'NGDC shrink guard: {len(rows)} new vs {n_before} existing rows')
+            outside = conn.execute('SELECT COUNT(*) FROM significant_quakes WHERE year<? OR year>?',
+                                   (start_year,end_year)).fetchone()[0]
+            if outside:
+                raise ValueError('Requested range would erase existing out-of-range events')
+            source = 'ngdc'
+        except Exception as exc:
+            error = str(exc)
+            rows = []
+            print(f'  ! NGDC refresh rejected: {error}', file=sys.stderr)
+
+    if not rows and n_before:
+        detail = error or 'Explicit fallback mode does not overwrite a nonempty snapshot'
+        return _save_refresh_status(conn, 'retained_stale', existing_source,
+                                    detail, start_year, end_year)
+
+    if not rows and not local_only:
+        try:
+            rows = list(fetch_mirror_rows(start_year,end_year))
+            source = 'noaa_mirror_2017'
+        except Exception as exc:
+            error += f'; mirror failed: {exc}'
+            rows = []
+    if not rows and not mirror_only:
+        rows = [row for row in (fetch_local_recent() or [])
+                if row[2] is not None and start_year <= row[2] <= end_year]
+        source = 'local_recent'
+    if not rows:
+        return _save_refresh_status(conn, 'unavailable', source,
+                                    error or 'No source provided events', start_year,end_year)
+    if any(row[2] is None or not start_year <= row[2] <= end_year for row in rows):
+        return _save_refresh_status(conn, 'retained_stale' if n_before else 'unavailable',
+                                    existing_source, 'Source returned out-of-range events', start_year,end_year)
+
+    # Atomic replacement: validation/insertion failure rolls back deletion.
+    with conn:
+        conn.execute('DELETE FROM significant_quakes')
+        conn.executemany(
+            'INSERT OR REPLACE INTO significant_quakes '
+            '(id,time_ms,year,month,day,mag,lat,lon,location,deaths,damage_musd,source) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', rows)
+    status = 'fresh' if source == 'ngdc' else 'degraded_bootstrap'
+    detail = 'Single source snapshot replacement' if status == 'fresh' else (
+        'Historical/selected fallback only; no complete recent surveillance. ' + error)
+    return _save_refresh_status(conn,status,source,detail,start_year,end_year)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--db', type=Path, default=DEFAULT_DB,
-                        help=f'SQLite database path (default: {DEFAULT_DB})')
+    parser.add_argument('--db', type=Path, default=DEFAULT_DB)
     parser.add_argument('--start-year', type=int, default=1900)
     parser.add_argument('--end-year', type=int, default=2099)
-    parser.add_argument('--mirror-only', action='store_true',
-                        help='Skip NGDC live pull; use 2017 mirror + local TSV')
-    parser.add_argument('--local-only', action='store_true',
-                        help='Skip all network fetches; use local TSV only')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--mirror-only', action='store_true',
+                       help='Bootstrap an empty DB from mirror only; preserve any existing snapshot')
+    modes.add_argument('--local-only', action='store_true',
+                       help='Bootstrap an empty DB from local TSV only; preserve any existing snapshot')
     args = parser.parse_args()
+    if args.start_year > args.end_year:
+        parser.error('start-year must be <= end-year')
 
     conn = sqlite3.connect(args.db)
-    conn.executescript(SCHEMA)
-
-    n_before = conn.execute('SELECT COUNT(*) FROM significant_quakes').fetchone()[0]
-
-    rows = []
-    rebuilt_from_ngdc = False
-    if not (args.mirror_only or args.local_only):
-        try:
-            rows = list(fetch_ngdc_rows(args.start_year, args.end_year))
-            # Guard: refuse a rebuild that shrinks the table by more than 5%
-            if n_before and len(rows) < 0.95 * n_before:
-                print(f'  ! NGDC returned only {len(rows)} rows vs {n_before} '
-                      f'existing — keeping existing table, treating as failure',
-                      file=sys.stderr)
-                rows = []
-            if rows:
-                rebuilt_from_ngdc = True
-        except Exception as e:
-            print(f'  ! NGDC live fetch failed: {e}', file=sys.stderr)
-            print('  → falling back to 2017 mirror + local recent TSV')
-
-    if not rows and not args.local_only:
-        try:
-            rows.extend(fetch_mirror_rows(args.start_year, args.end_year))
-        except Exception as e:
-            print(f'  ! mirror fetch failed: {e}', file=sys.stderr)
-    if not rebuilt_from_ngdc:
-        rows.extend(fetch_local_recent() or [])
-
-    if rebuilt_from_ngdc:
-        # Single source of truth: drop any old mirror/local rows
-        conn.execute('DELETE FROM significant_quakes')
-
-    conn.executemany(
-        'INSERT OR REPLACE INTO significant_quakes '
-        '(id, time_ms, year, month, day, mag, lat, lon, location, '
-        'deaths, damage_musd, source) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        rows,
-    )
-    conn.commit()
-
-    n_after = conn.execute('SELECT COUNT(*) FROM significant_quakes').fetchone()[0]
-    n_with_deaths = conn.execute(
-        'SELECT COUNT(*) FROM significant_quakes WHERE deaths IS NOT NULL AND deaths > 0'
-    ).fetchone()[0]
-    total_deaths = conn.execute(
-        'SELECT SUM(deaths) FROM significant_quakes WHERE deaths IS NOT NULL'
-    ).fetchone()[0]
-    span = conn.execute(
-        'SELECT MIN(year), MAX(year) FROM significant_quakes'
-    ).fetchone()
-    conn.close()
-
-    src = 'NGDC live' if rebuilt_from_ngdc else 'mirror+local fallback'
-    print()
-    print(f'significant_quakes table ({src}): {n_before:,} → {n_after:,} '
-          f'rows ({n_after - n_before:+,})')
-    print(f'  Events with recorded deaths: {n_with_deaths:,}')
-    print(f'  Total deaths (sum of recorded): {total_deaths:,}')
-    print(f'  Year span: {span[0]} → {span[1]}')
+    try:
+        conn.executescript(SCHEMA)
+        result = refresh_significant(conn,args.start_year,args.end_year,
+                                     mirror_only=args.mirror_only,local_only=args.local_only)
+        print(json.dumps(result,indent=2))
+        destination = Path(str(args.db)+'.significant.status.json')
+        temporary = destination.with_name(destination.name+'.tmp')
+        temporary.write_text(json.dumps(result,indent=2)+'\n')
+        temporary.replace(destination)
+        return 0 if result['status'] == 'fresh' else 2
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

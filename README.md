@@ -4,9 +4,9 @@ Pull the USGS M≥4.0 earthquake catalog into a local SQLite database, then expl
 
 ## What it does
 
-`fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher is idempotent on event id and resumable: re-running only processes missing chunks, and the current year is always re-fetched.
+`fetch_quakes.py` queries the [USGS FDSN event service](https://earthquake.usgs.gov/fdsnws/event/1/) in yearly chunks, auto-splitting any year that exceeds the API's 20,000-result cap into months. Results land in `quakes.sqlite` (~110 MB for 1965–today, ~530k events). The fetcher resumes from date-and-query cache records: a different magnitude floor triggers a new fetch, and the current year is always fetched again. Legacy date-only cache entries remain for audit but must be fetched once under the new schema because their selection criteria are unknown. A `.coverage.json` sidecar records successful query bounds and gaps independently of the last earthquake date. Upserts refresh known events; withdrawn historical events still require explicit catalogue reconciliation.
 
-`fetch_significant.py` adds fatality and damage data for significant earthquakes since 1900 from the NOAA NCEI Significant Earthquake Database, pulled via a [GitHub mirror](https://github.com/benjiao/significant-earthquakes) (through 2017) plus a local `recent_significant.tsv` for post-2017 events. Replace the latter with a fresh NOAA NCEI download when their API is reachable. Data lands in a `significant_quakes` table alongside the USGS catalog.
+`fetch_significant.py` fetches fatality and damage data from the [NOAA NCEI significant-earthquake API](https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/earthquakes). It stages a single-source snapshot and replaces the `significant_quakes` table atomically after validation. A failed or unexpectedly small refresh preserves existing rows unchanged. Fallback copies are never appended to an existing snapshot.
 
 `earthquakes.ipynb` reads both tables and produces the nine plots below. Each is also written to `figures/` so you can browse them on GitHub without running the notebook.
 
@@ -111,7 +111,7 @@ python fetch_significant.py   # NOAA NCEI fatality data: 1900 to today
 
 `fetch_quakes.py` defaults to M≥4.0, 1965 → today. Override with `--start-year`, `--end-year`, `--min-mag`, `--db`. Pre-1965 data is sparse globally; treat earlier years as undercounting reality.
 
-`fetch_significant.py` pulls from the GitHub mirror (1900–2017) and reads `recent_significant.tsv` for post-2017 events. Use `--mirror-only` or `--local-only` to control sources. When NOAA NCEI's API is reachable, regenerate `recent_significant.tsv` from a fresh search export at https://www.ngdc.noaa.gov/hazel/view/Hazards/Earthquake/Search.
+`fetch_significant.py` uses the live NGDC source by default. Only an empty database can bootstrap from the 2017 mirror, or from the local TSV if the mirror fails; those sources are kept separate. `--mirror-only` and `--local-only` select an empty-database bootstrap source and preserve any existing snapshot. The fetcher writes `.significant.status.json` and a status row inside SQLite. Fresh live refreshes exit 0; stale, unavailable, or fallback-only runs exit 2 so monitoring can flag degraded data. Partial-date significant events retain their annual fields but do not receive an invented exact-day timestamp.
 
 ## Open the notebook
 
@@ -120,3 +120,7 @@ jupyter notebook earthquakes.ipynb
 ```
 
 Re-executing the notebook refreshes the PNGs in `figures/` as a side effect.
+
+## Fetcher regression checks
+
+Run `python -m unittest discover -s tests -v`. Tests use mocked requests and in-memory SQLite; they never modify a live catalogue.
