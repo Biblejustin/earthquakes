@@ -8,6 +8,6 @@
   "source_url": "https://earthquake.usgs.gov/fdsnws/event/1/query",
   "source_version": "19b1e490a39f8383006f32b3da9392829c777f384fc724943704204d690f5e61",
   "min_magnitude": 6.5,
-  "as_of": "2026-09-07T11:31:10.430878+00:00",
+  "as_of": "2026-09-08T11:31:07.423404+00:00",
   "notes": "Successful full-year queries at recorded magnitude floor; current year provisional. Historical cache does not imply every historical event is detected."
 }
