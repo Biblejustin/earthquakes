@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-09-09T11:31:28.332459+00:00",
+  "checked_at": "2026-11-06T04:33:26.890045+00:00",
   "status": "fresh",
   "source": "ngdc",
   "detail": "Single source snapshot replacement",
   "start_year": 1900,
   "end_year": 2099,
-  "row_count": 4092
+  "row_count": 4095
 }
